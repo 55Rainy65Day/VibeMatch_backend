@@ -2,7 +2,15 @@
 
 ## Project Deep Dive Analysis
 
-After thoroughly analyzing the existing codebase, database schema, and requirements, I've identified that we have a solid foundation but need to build the entire application layer. Here's every single file that needs to be created:
+After thoroughly analyzing the existing codebase, database schema, and requirements, I've identified that we have a solid foundation but need to build the entire application layer. 
+
+**CRITICAL: This is an OTP-based authentication system, NOT password-based. The authentication flow uses:**
+- Continue with Google (OAuth)
+- Continue with Email (OTP verification)
+- No passwords anywhere in the system
+- Smart routing based on account status (new user → signup, existing user → login, incomplete → resume)
+
+Here's every single file that needs to be created:
 
 ---
 
@@ -19,17 +27,20 @@ After thoroughly analyzing the existing codebase, database schema, and requireme
 - `ValidationError` - Form validation error structure
 
 **`src/types/auth.ts`**
-- `AuthState` - Authentication state management
-- `LoginCredentials` - Email/password login
-- `SignupCredentials` - Registration data
+- `AuthState` - Authentication state management (OTP-based)
+- `EmailAuthRequest` - Email for OTP request
+- `OTPVerificationRequest` - Email + OTP code verification
+- `GoogleAuthRequest` - Google OAuth data
 - `AuthError` - Authentication-specific errors
 - `Session` - User session data
 - `TokenRefreshResponse` - JWT token refresh
-- `PasswordResetRequest` - Password reset flow
+- `AccountStatus` - 'new' | 'existing' | 'incomplete' - determines flow routing
+- `AuthProvider` - 'email' | 'google' - authentication method used
+- `OTPResponse` - OTP sending response with status
 
 **`src/types/navigation.ts`**
 - `RootStackParamList` - Main app navigation
-- `AuthStackParamList` - Authentication flow
+- `AuthStackParamList` - Authentication flow (OTP-based)
 - `OnboardingStackParamList` - Profile setup flow
 - `MainTabParamList` - Bottom tab navigation
 - `MessagesTabParamList` - Messages section tabs
@@ -142,7 +153,7 @@ After thoroughly analyzing the existing codebase, database schema, and requireme
 
 **`src/utils/validation.ts`**
 - `validateEmail(email: string)` - Email format validation
-- `validatePassword(password: string)` - Password strength
+- `validateOTP(otp: string)` - OTP format validation (6 digits)
 - `validateAge(age: number)` - Age range validation
 - `validateBio(bio: string)` - Bio length and content
 - `validatePhoneNumber(phone: string)` - Phone format
@@ -176,10 +187,11 @@ After thoroughly analyzing the existing codebase, database schema, and requireme
 
 **`src/utils/crypto.ts`**
 - `generateUUID()` - UUID generation
-- `hashPassword(password: string)` - Password hashing
+- `generateOTPCode()` - Generate 6-digit OTP (for testing/dev)
 - `generateRandomString(length: number)` - Random strings
 - `encryptData(data: string, key: string)` - Data encryption
 - `decryptData(encryptedData: string, key: string)` - Data decryption
+- `validateOTPFormat(otp: string)` - OTP format validation
 
 **`src/utils/performance.ts`**
 - `debounce(func: Function, delay: number)` - Debouncing
@@ -232,15 +244,17 @@ After thoroughly analyzing the existing codebase, database schema, and requireme
 ### Authentication Services
 
 **`src/services/authService.ts`**
-- `signUp(credentials: SignupCredentials)` - User registration
-- `signIn(credentials: LoginCredentials)` - User login
+- `requestOTP(email: string)` - Send OTP to email
+- `verifyOTP(email: string, otp: string)` - Verify OTP and authenticate
+- `signInWithGoogle()` - Google OAuth authentication
+- `checkAccountStatus(email: string)` - Check if user exists and profile completion status
 - `signOut()` - User logout
-- `resetPassword(email: string)` - Password reset
-- `updatePassword(newPassword: string)` - Password change
 - `getCurrentUser()` - Get current user
 - `refreshSession()` - Refresh auth token
 - `deleteAccount()` - Account deletion
 - `onAuthStateChange(callback: Function)` - Auth state listener
+- `resendOTP(email: string)` - Resend OTP code
+- `getAuthProvider()` - Get how user authenticated (email/google)
 
 **`src/services/userService.ts`**
 - `createProfile(data: SignupData)` - Create user profile
@@ -387,11 +401,14 @@ After thoroughly analyzing the existing codebase, database schema, and requireme
 ### Authentication Hooks
 
 **`src/hooks/useAuth.ts`**
-- Authentication state management
-- Login/logout functions
+- Authentication state management (OTP-based)
+- OTP request/verification functions
+- Google OAuth integration
 - Session persistence
 - Auth error handling
 - Loading states
+- Account status checking
+- Smart routing logic
 
 **`src/hooks/useUser.ts`**
 - Current user profile data
@@ -960,44 +977,42 @@ After thoroughly analyzing the existing codebase, database schema, and requireme
 ### Authentication Screens
 
 **`src/screens/auth/WelcomeScreen.tsx`**
-- App logo and branding
+- App logo and branding  
 - Feature highlights
-- Login button
-- Signup button
+- "Continue with Google" button
+- "Continue with Email" button
 - Terms and privacy links
-- Social login options (future)
+- No login/signup distinction (smart routing handles this)
 
-**`src/screens/auth/LoginScreen.tsx`**
+**`src/screens/auth/EmailInputScreen.tsx`**
 - Email input field
-- Password input field
-- Login button with loading
-- Forgot password link
-- Signup navigation
+- Continue button with loading
+- Back to welcome
 - Form validation
 - Error display
+- Account status checking
 
-**`src/screens/auth/SignupScreen.tsx`**
-- Email input
-- Password input
-- Confirm password
-- Terms acceptance checkbox
-- Signup button
-- Login navigation
-- Validation and errors
+**`src/screens/auth/OTPVerificationScreen.tsx`**
+- OTP input field (6 digits)
+- Verify button with loading
+- Resend OTP button with countdown
+- Back to email input
+- Auto-submit when 6 digits entered
+- Error display
+- Account status routing after verification
 
-**`src/screens/auth/ForgotPasswordScreen.tsx`**
-- Email input
-- Reset instructions
-- Send reset button
-- Back to login
-- Success confirmation
+**`src/screens/auth/GoogleAuthScreen.tsx`**
+- Google OAuth integration
+- Loading states
+- Error handling
+- Account status routing after Google auth
+- Privacy policy acceptance
 
-**`src/screens/auth/ResetPasswordScreen.tsx`**
-- New password input
-- Confirm password input
-- Reset button
-- Password requirements
-- Success navigation
+**`src/screens/auth/AuthLoadingScreen.tsx`**
+- Loading spinner during auth checks
+- Account status determination
+- Smart routing to appropriate screen
+- Error handling for auth failures
 
 ### Onboarding Screens
 
@@ -1186,11 +1201,12 @@ After thoroughly analyzing the existing codebase, database schema, and requireme
 - Logout option
 
 **`src/screens/settings/AccountSettingsScreen.tsx`**
-- Email and password
+- Email management
 - Phone number
 - Account deletion
 - Data export
 - Deactivate account
+- Re-authentication for sensitive actions
 
 **`src/screens/settings/PrivacySettingsScreen.tsx`**
 - Profile visibility
@@ -1288,9 +1304,10 @@ After thoroughly analyzing the existing codebase, database schema, and requireme
 - Navigation state persistence
 
 **`src/navigation/AuthNavigator.tsx`**
-- Authentication stack
-- Welcome, Login, Signup screens
-- Password reset flow
+- Authentication stack (OTP-based)
+- Welcome, Email Input, OTP Verification screens
+- Google OAuth integration
+- Smart routing based on account status
 
 **`src/navigation/OnboardingNavigator.tsx`**
 - Onboarding flow
@@ -1336,10 +1353,13 @@ After thoroughly analyzing the existing codebase, database schema, and requireme
 ## 10. CONTEXT PROVIDERS
 
 **`src/context/AuthContext.tsx`**
-- Authentication state
+- Authentication state (OTP-based)
 - User session management
-- Login/logout functions
+- OTP verification functions
+- Google OAuth functions
 - Session persistence
+- Account status tracking
+- Smart routing logic
 
 **`src/context/ThemeContext.tsx`**
 - Theme management
@@ -1376,6 +1396,19 @@ After thoroughly analyzing the existing codebase, database schema, and requireme
 ## 11. SUPABASE EDGE FUNCTIONS
 
 ### Core Business Logic Functions
+
+- Generate and send OTP codes via email
+- Rate limiting for OTP requests
+- OTP expiry management
+- Email template rendering
+- Delivery tracking
+
+**`supabase/functions/verify-otp/index.ts`**
+- Verify OTP codes
+- Account status checking
+- User creation for new accounts
+- Session management
+- Security logging
 
 **`supabase/functions/process-match-request/index.ts`**
 - Handle match request acceptance
@@ -1449,6 +1482,69 @@ After thoroughly analyzing the existing codebase, database schema, and requireme
 - Delivery confirmations
 - Device token updates
 - Notification analytics
+
+---
+
+## FILES THAT NEED TO BE MODIFIED FOR OTP AUTHENTICATION
+
+### Current Files Requiring Changes
+
+**`src/lib/supabase.ts`** - NEEDS MODIFICATION
+- Remove password-based auth configuration
+- Configure for OTP-based authentication
+- Set up Google OAuth provider
+- Update session handling for OTP flow
+
+**`src/types/index.ts`** - NEEDS MODIFICATION  
+- Remove password-related interfaces (`SignupCredentials`, `LoginCredentials`)
+- Add OTP-specific interfaces (`OTPRequest`, `OTPVerification`, `AccountStatus`)
+- Update `AuthUser` interface to include auth provider
+- Add Google OAuth related types
+
+**`App.tsx`** - NEEDS MODIFICATION
+- Update to handle OTP-based authentication flow
+- Add Google OAuth configuration
+- Update navigation routing based on account status
+
+### Database Schema Considerations
+
+The current `supabase/schema.sql` does NOT contain any password fields in the users table, which is correct for OTP-based auth. However, we may need to add:
+
+```sql
+-- Add to users table if not present:
+ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR DEFAULT 'email'; -- 'email' or 'google'
+ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR UNIQUE; -- For Google OAuth
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;
+
+-- OTP tracking table (optional, can use Supabase auth directly)
+CREATE TABLE IF NOT EXISTS otp_codes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR NOT NULL,
+  code VARCHAR(6) NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### Authentication Flow Summary
+
+1. **Welcome Screen** → Continue with Google OR Continue with Email
+2. **Google Flow**: OAuth → Check account status → Route accordingly
+3. **Email Flow**: Email Input → OTP Verification → Check account status → Route accordingly
+4. **Account Status Routing**:
+   - New user → Onboarding flow
+   - Existing complete user → Main app
+   - Incomplete user → Resume from last completed onboarding step
+
+### Key Implementation Notes
+
+- No passwords anywhere in the system
+- Supabase Auth handles OTP generation and verification
+- Google OAuth integration through Supabase Auth
+- Smart routing based on user profile completion status
+- Session persistence through Expo SecureStore
+- Rate limiting on OTP requests to prevent abuse
 
 ---
 
